@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>External File Upload</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    input, button { margin: 8px 0; padding: 6px; }
+    .file-status { margin-top: 15px; }
+    .download-btn { margin-left: 10px; }
+  </style>
+</head>
+<body>
+  <h2>Upload Project File</h2>
+  <div id="upload-file">
+  
+    <label>Project Name:</label><br>
+    <input type="text" id="projectName" placeholder="Enter Project Name" value="PNG Upload"><br>
+
+    <label>Choose File (PDF/PNG/JPG/JPEG):</label><br>
+    <input type="file" id="fileInput" accept=".pdf,.png,.jpg,.jpeg"><br><br>
+
+    <button onclick="uploadFile()">Upload</button>
+  </div>
+
+  <div id="responseArea" class="file-status"></div>
+
+  <script>
+    const API_UPLOAD = "http://localhost:8000/project/external-upload/";
+    const API_CHECK = "http://localhost:8000/project/external-upload-file-check/";
+    const JWT_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3NTcwNzU0NTIsImlhdCI6MTc1NjQ3MDY1MiwibGljZW5zZV9rZXkiOiI5YmIxOTNiMy04MjkzLTQ5NmMtODhjZC1kOTM5NTYxZDE0NTIifQ.Ia2HAWrQTI3HSaChF_we-KHE8DgoRTQNPBorULX2NTk";
+
+    let pollInterval = null;  // store interval ID
+
+    async function uploadFile() {
+      const projectName = document.getElementById("projectName").value;
+      const fileInput = document.getElementById("fileInput");
+      const file = fileInput.files[0];
+      const uploadBtn = document.querySelector("button[onclick='uploadFile()']");
+      const responseArea = document.getElementById("responseArea");
+
+      if (!projectName || !file) {
+        alert("Please provide project name and file.");
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append("project_name", projectName);
+      formData.append("file1", file);
+
+      uploadBtn.disabled = true;
+      uploadBtn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> Uploading…`;
+      fileInput.value = "";
+      document.getElementById("projectName").value = "";
+
+      try {
+        const res = await fetch(API_UPLOAD, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${JWT_TOKEN}` },
+          body: formData
+        });
+
+        const data = await res.json();
+        console.log("Upload response:", data);
+
+        if (res.ok) {
+          responseArea.innerHTML = `
+            <p><b>${data.message}</b></p>
+            <p>Ref ID: ${data.refID}</p>
+            <p>File Name: ${data.fileNames.join(", ")}</p>
+            <p style="color:blue;">Checking status automatically every 25s...</p>
+          `;
+          // start auto polling
+          if (pollInterval) clearInterval(pollInterval);
+          pollInterval = setInterval(() => checkFiles(data.fileIDs), 25000);
+        } else {
+          responseArea.innerHTML = `<p class="error">❌ ${data.message}</p>`;
+          resetUploadBtn(uploadBtn);
+        }
+      } catch (err) {
+        console.error(err);
+        responseArea.innerHTML = `<p class="error">❌ Upload failed. Please try again.</p>`;
+        resetUploadBtn(uploadBtn);
+      }
+    }
+
+    async function checkFiles(fileIDs) {
+      const responseArea = document.getElementById("responseArea");
+      const formData = new FormData();
+      fileIDs.forEach(fid => formData.append("fileIDs[]", fid));
+      const uploadBtn = document.querySelector("button[onclick='uploadFile()']");
+
+      try {
+        const res = await fetch(API_CHECK, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${JWT_TOKEN}` },
+          body: formData
+        });
+
+        const data = await res.json();
+        console.log("Check response:", data);
+
+        if (res.ok && data.ready) {
+          clearInterval(pollInterval); // stop polling once verified
+          let html = "<h3>Verified Files</h3>";
+          data.verified_files.forEach(file => {
+            html += `
+              <h3 style="color:#1B4D3E">✅ Your drawing has been successfully verified!</h3>
+              <p>
+                File Name: ${file.fileName}
+                <a class="download-btn" href="${file.url}" target="_blank" download>
+                  <button>Download</button>
+                </a>
+                <a class="download-btn" href="${file.summary_html}" target="_blank">
+                  <button>View Summary</button>
+                </a>
+              </p>`;
+          });
+          responseArea.innerHTML = html;          
+          resetUploadBtn(uploadBtn);
+        } else if (data.error) {
+          clearInterval(pollInterval);
+          responseArea.innerHTML = `<p class="error">❌ ${data.message}</p>`;
+          resetUploadBtn(uploadBtn);
+        } else {
+          responseArea.innerHTML = `<p>PNID.IO Is Deciphering Your File—Exciting Insights Await!</p>`;
+        }
+      } catch (err) {
+        console.error(err);
+        responseArea.innerHTML = `<p class="error">❌ Status check failed. Please try again later.</p>`;
+        resetUploadBtn(uploadBtn);
+      }
+    }
+    function resetUploadBtn(uploadBtn) {
+      uploadBtn.disabled = false;
+      uploadBtn.innerHTML = "Upload";
+    }
+  </script>
+</body>
+</html>
