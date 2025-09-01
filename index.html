@@ -26,11 +26,39 @@
   <div id="responseArea" class="file-status"></div>
 
   <script>
-    const API_UPLOAD = "http://localhost:8000/project/external-upload/";
-    const API_CHECK = "http://localhost:8000/project/external-upload-file-check/";
-    const JWT_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3NTcwNzU0NTIsImlhdCI6MTc1NjQ3MDY1MiwibGljZW5zZV9rZXkiOiI5YmIxOTNiMy04MjkzLTQ5NmMtODhjZC1kOTM5NTYxZDE0NTIifQ.Ia2HAWrQTI3HSaChF_we-KHE8DgoRTQNPBorULX2NTk";
+    const LICENSE_KEY = "a4fd5746-71ef-444f-a0fb-db91aaa5210e";
+    const API_UPLOAD = "https://qa1.pnid.io/project/external-upload/";
+    const API_CHECK = "https://qa1.pnid.io/project/external-upload-file-check/";
+    const API_TOKEN = "https://qa1.pnid.io/project/generate-jwt-token/";
 
+    let JWT_TOKEN = null;
     let pollInterval = null;  // store interval ID
+
+    async function getJwtToken() {
+      try {
+        const res = await fetch(API_TOKEN, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            license_key: LICENSE_KEY,
+            hours: 1
+          })
+        });
+
+        const data = await res.json();
+        if (res.ok && data.token) {
+          JWT_TOKEN = data.token;
+          return JWT_TOKEN;
+        } else {
+          alert("❌ Failed to generate token: " + (data.message || "Unknown error"));
+          throw new Error("Token generation failed");
+        }
+      } catch (err) {
+        console.error("Error fetching JWT:", err);
+        alert("❌ Could not fetch JWT. Please try again.");
+        throw err;
+      }
+    }
 
     async function uploadFile() {
       const projectName = document.getElementById("projectName").value;
@@ -42,6 +70,10 @@
       if (!projectName || !file) {
         alert("Please provide project name and file.");
         return;
+      }
+
+      if (!JWT_TOKEN) {
+        await getJwtToken();
       }
 
       const formData = new FormData();
